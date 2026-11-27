@@ -125,7 +125,7 @@ No configuration is concave (delta between 0.92 and 1.17). The hypothesis in DES
 therefore REJECTED for this model; the README must say "linear/permanent", not "square-root-like".
 Untested explanation (hypothesis only, nothing was changed): background limit orders are priced relative to the opposite best quote
 (ref_ask - k, ref_bid + k), so the whole book re-anchors to the new touch and the shifted price is never pulled back; there is
-no latent-liquidity depth profile growing away from the touch (mean depth: ~4.5 lots at the touch, roughly flat beyond).
+the depth profile does grow away from the touch (mean depth 4.5 lots at the touch, 8.4 at 4 ticks, 11.2 at 9 ticks, then falls to 5.1 at 19 ticks and ~0 beyond 25 ticks because placement is limited to K = 20), but the price displacement itself is never restored.
 Test handling (per TESTPLAN 9.5): `exp 5a` (monotone steps, delta >= 0.25) passes; the failing checks (delta <= 0.85, delta + 2 SE < 1) live in
 `exp 5b`, marked `doctest::should_fail()` so the suite is green while the discrepancy exists and turns red if the model ever changes. Q grid, H, R, seeds and
 the fit rule were not touched. The architect decides whether to redesign the placement rule.
