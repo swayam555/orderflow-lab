@@ -97,6 +97,7 @@ class MarketSim {
     void bg_remove(OrderId id);
     void background_event(int type);
     void advance_fund();
+    void check_owner(OwnerId owner) const;
 
     SimConfig cfg_;
     OrderBook book_;

@@ -64,7 +64,9 @@ ExecPathResult run_exec_path(const SimConfig& cfg, const ExecConfig& ec, const s
     ScheduleAgent ag(Side::Buy, std::move(sched), ec.t0 + ec.H, ec.t0);
     ag.bind(sim);
     sim.run_until(ec.t0 + ec.H);
-    return {ag.implementation_shortfall() / static_cast<double>(ec.X), ag.filled(), ag.unfilled()};
+    // Per FILLED lot: unfilled lots are excluded from the shortfall, so dividing by X would flatter partially filled programs.
+    const double per_lot = ag.filled() > 0 ? ag.implementation_shortfall() / static_cast<double>(ag.filled()) : 0.0;
+    return {per_lot, ag.filled(), ag.unfilled()};
 }
 
 double estimate_sigma2(const SimConfig& cfg, std::uint64_t seed, int n_paths, unsigned threads) {
@@ -118,10 +120,12 @@ AcCalibration calibrate_ac_params(const SimConfig& cfg, const ExecConfig& ec, st
             MarketSim sim(cfg, seed + 2, static_cast<std::uint64_t>(p));
             std::vector<ScheduledOrder> sched;
             for (std::size_t k = 0; k < twap.size(); ++k) sched.push_back({ec.t0 + static_cast<double>(k) * tau, twap[k]});
-            ScheduleAgent ag(Side::Buy, std::move(sched), ec.t0 + ec.H, ec.t0);
-            ag.bind(sim);
+            // The observer must be registered BEFORE the schedule agent: agents wake in registration order, so
+            // otherwise mid(t0) would be read after the first child order has already traded.
             ObserverAgent ob(ec.t0, 2.0 * ec.H, 2);
             sim.add_agent(&ob);
+            ScheduleAgent ag(Side::Buy, std::move(sched), ec.t0 + ec.H, ec.t0);
+            ag.bind(sim);
             sim.run_until(ec.t0 + 2.0 * ec.H);
             dm[static_cast<std::size_t>(p)] = ob.mids()[1] - ob.mids()[0];
         });
@@ -144,6 +148,7 @@ std::vector<ExecStrategyResult> run_execution_experiment(const SimConfig& cfg, c
                                                          const AcCalibration& cal,
                                                          const std::vector<ExecStrategy>& strategies, std::int64_t R,
                                                          std::uint64_t seed, unsigned threads) {
+    if (R < 1) throw std::invalid_argument("run_execution_experiment: R must be >= 1");
     if (strategies.empty() || strategies[0].kind != ExecKind::Twap)
         throw std::invalid_argument("run_execution_experiment: strategies[0] must be TWAP");
     const std::size_t S = strategies.size();
@@ -251,6 +256,10 @@ AsSimResult run_as_sim_experiment(const SimConfig& cfg, const AsCalibration& cal
 // ------------------------------------------------------------------ impact validation
 
 ImpactResult run_impact_experiment(const SimConfig& cfg, const ImpactConfig& ic, std::uint64_t seed, unsigned threads) {
+    if (ic.R < 1) throw std::invalid_argument("run_impact_experiment: R must be >= 1");
+    if (ic.Qs.empty()) throw std::invalid_argument("run_impact_experiment: Qs must not be empty");
+    if (ic.profile_points < 11)
+        throw std::invalid_argument("run_impact_experiment: profile_points must be >= 11 (the impact at t0+H is sample 10)");
     std::vector<int> qs{0};
     for (int q : ic.Qs) qs.push_back(q);
     const std::size_t nq = qs.size();

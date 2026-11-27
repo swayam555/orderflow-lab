@@ -24,9 +24,13 @@ double as_symmetric_spread(double gamma, double sigma, double k, double T) {
 }
 
 AsOwnResult as_own_model(const AsModelParams& p, std::int64_t paths, std::uint64_t seed, unsigned threads) {
+    if (paths < 1) throw std::invalid_argument("as_own_model: paths must be >= 1");
+    if (!(p.dt > 0.0) || !(p.T > 0.0) || !(p.k > 0.0) || !(p.A >= 0.0))
+        throw std::invalid_argument("as_own_model: need dt > 0, T > 0, k > 0, A >= 0");
     constexpr std::int64_t kBlock = 1024;
     const std::int64_t nblocks = (paths + kBlock - 1) / kBlock;
     const int steps = static_cast<int>(std::llround(p.T / p.dt));
+    if (steps < 1) throw std::invalid_argument("as_own_model: T/dt rounds to zero steps");
     const double sym_spread = as_symmetric_spread(p.gamma, p.sigma, p.k, p.T);
     std::vector<AsOwnResult> parts(static_cast<std::size_t>(nblocks));
     qc::parallel_blocks(nblocks, threads, [&](std::int64_t blk) {

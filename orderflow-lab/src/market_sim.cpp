@@ -45,7 +45,7 @@ HawkesParams make_params(const SimConfig& c) {
 }  // namespace
 
 MarketSim::MarketSim(const SimConfig& cfg, std::uint64_t seed, std::uint64_t path_id)
-    : cfg_(cfg),
+    : cfg_((cfg.validate(), cfg)),  // validate first so errors name the offending SimConfig field
       book_(cfg.min_tick, cfg.max_tick, 1u << 14, 1u << 16),
       hawkes_(make_params(cfg)),
       rng_h_exp_(seed, path_id, 1),
@@ -204,7 +204,13 @@ void MarketSim::run_until(double t_end) {
     }
 }
 
+void MarketSim::check_owner(OwnerId owner) const {
+    if (owner < 1 || owner > agents_.size())
+        throw std::invalid_argument("MarketSim: owner id " + std::to_string(owner) + " is not a registered agent (bind() the agent first)");
+}
+
 OrderResult MarketSim::agent_market(OwnerId owner, Side side, Qty qty) {
+    check_owner(owner);
     ++counters_.agent_orders;
     const OrderResult r = book_.submit_market(side, qty, owner);
     after_engine_call();
@@ -217,6 +223,7 @@ OrderResult MarketSim::agent_market(OwnerId owner, Side side, Qty qty) {
 }
 
 OrderResult MarketSim::agent_limit(OwnerId owner, Side side, Tick price, Qty qty) {
+    check_owner(owner);
     ++counters_.agent_orders;
     const OrderResult r = book_.submit_limit(side, price, qty, Tif::GTC, owner);
     after_engine_call();
@@ -224,6 +231,7 @@ OrderResult MarketSim::agent_limit(OwnerId owner, Side side, Tick price, Qty qty
 }
 
 OrderResult MarketSim::agent_cancel(OwnerId owner, OrderId id) {
+    check_owner(owner);
     ++counters_.agent_orders;
     const auto v = book_.find(id);
     if (!v || v->owner != owner) return OrderResult{id, Status::Rejected, Reject::UnknownId, 0, 0, 0};

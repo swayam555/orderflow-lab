@@ -1,5 +1,7 @@
 # orderflow-lab
 
+> Part of a pair of C++ quant projects (with a sibling, `roughvol`). A full overview of both, the research behind them and how to build and test is in [`docs/OVERVIEW.md`](../docs/OVERVIEW.md).
+
 A C++20 limit-order-book (LOB) matching engine, an exact multivariate Hawkes order-flow simulator, a discrete-event market
 simulator built on both, and four experiments on top of it: optimal execution (Almgren-Chriss, Bertsimas-Lo), Avellaneda-Stoikov
 market making, Hawkes calibration and a metaorder-impact measurement. Only `qc` (the shared support library: Philox RNG,
@@ -79,13 +81,13 @@ Fit of log I on log Q: **delta = 0.997 +- 0.013** (R^2 0.9995, 5 points; plot da
 
 ## Execution (Almgren-Chriss, Bertsimas-Lo)
 
-Buy 64 lots over 300 s in 10 market-order slices. AC inputs estimated from the simulator (seed 7001): sigma^2 = 0.416 ticks^2/s, epsilon = 1.135 +- 0.031 ticks, eta = 5.89 ticks per (lot/s), gamma = 0.089 +- 0.007 ticks/lot. Evaluation: 2000 paths per strategy, common random numbers, seed 7002; IS in ticks per lot (positive = worse than the arrival mid):
+Buy 64 lots over 300 s in 10 market-order slices. AC inputs estimated from the simulator (seed 7001): sigma^2 = 0.416 ticks^2/s, epsilon = 1.135 +- 0.031 ticks, eta = 5.89 ticks per (lot/s), gamma = 0.103 +- 0.007 ticks/lot. Evaluation: 2000 paths per strategy, common random numbers, seed 7002; IS in ticks per lot (positive = worse than the arrival mid):
 
 | strategy | mean IS | SE | sd | mean diff vs TWAP (SE) | AC model E / sd | unfilled |
 |---|---|---|---|---|---|---|
-| TWAP | 5.458 | 0.091 | 4.089 | 0 | 4.95 / 5.96 | 0 |
-| AC kappa T = 1 | 5.368 | 0.087 | 3.904 | -0.090 (0.070) | 4.97 / 5.55 | 0 |
-| AC kappa T = 3 | 5.112 | 0.071 | 3.166 | -0.346 (0.079) | 5.48 / 3.83 | 0 |
+| TWAP | 5.458 | 0.091 | 4.089 | 0 | 5.37 / 5.96 | 0 |
+| AC kappa T = 1 | 5.368 | 0.087 | 3.904 | -0.090 (0.070) | 5.38 / 5.55 | 0 |
+| AC kappa T = 3 | 5.112 | 0.071 | 3.166 | -0.346 (0.079) | 5.87 / 3.83 | 0 |
 | BL, gamma = 0 | identical to TWAP | | | | | 0 |
 
 Front-loading (kappa T = 3) lowered the IS standard deviation (variance ratio 0.60 vs TWAP) and, in this simulator, also the mean; the AC model's predicted E and sd are only roughly in line with the simulated values (it over-predicts the sd of TWAP and kappa T = 1). The ordering of means is a result for this simulator, not a general claim.

@@ -33,6 +33,8 @@ AcSchedule finish(const AcParams& p, std::vector<double> x, double kappa) {
 }  // namespace
 
 void ac_evaluate(const AcParams& p, std::span<const double> x, double& expected_cost, double& variance) {
+    if (p.N < 1 || x.size() != static_cast<std::size_t>(p.N) + 1)
+        throw std::invalid_argument("ac_evaluate: x must have N+1 entries (holdings x_0..x_N)");
     const double tau = p.T / p.N, et = eta_tilde(p);
     double abs_sum = 0.0, sq_sum = 0.0, xsq = 0.0;
     for (int k = 1; k <= p.N; ++k) {

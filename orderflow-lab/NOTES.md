@@ -58,11 +58,11 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
   (test_determinism.cpp was created here with TESTPLAN 10.3 and 10.2 (BL) - those are due in A5/A6 by the WORKPLAN table; AS and
   impact determinism are added in A8/A9.)
 - Calibration (seed 7001; 400/200/500 paths): sigma^2 0.4159 ticks^2/s; epsilon 1.1347 +- 0.0314 ticks; eta 5.892 ticks per (lot/s)
-  (OLS slippage slope c x tau); gamma 0.0888 +- 0.0067 ticks/lot. No throw (eta_tilde = 5.89 - 0.089*30/2 = 4.56 > 0).
+  (OLS slippage slope c x tau); gamma 0.1033 +- 0.0067 (corrected, see "Post-review fixes") ticks/lot. No throw (eta_tilde = 5.89 - 0.103*30/2 = 4.34 > 0).
   The tiny 10/10/10 calibration of test exp 1 also returns finite values (eps 1.26, eta 5.80, gamma 0.048).
 - Evaluation (R = 2000, seed 7002, CRN; IS per lot in ticks): TWAP 5.458 (sd 4.089, se 0.091); AC kT=1 5.368 (sd 3.904), diff -0.090 +- 0.070;
   AC kT=3 5.112 (sd 3.166), diff -0.346 +- 0.079; BL gamma=0 identical to TWAP. unfilled_total = 0 for all.
-  AC model prediction (E, sd per lot): TWAP 4.95 / 5.96; kT=1 4.97 / 5.55; kT=3 5.48 / 3.83.
+  AC model prediction (E, sd per lot): TWAP 5.37 / 5.96; kT=1 5.38 / 5.55; kT=3 5.87 / 3.83.
   Observed: the variance reduction is real (Var ratio kT=3 / TWAP = 0.599 < 0.9) but the model's sd over-predicts and its E slightly
   under-predicts TWAP and over-predicts kT=3 (AC cost model is a linear approximation; the simulator has mean-reverting spread/depth).
   AC kT=3 also has *lower* mean IS than TWAP here (-0.346 +- 0.079, 4.4 SE), i.e. front-loading did not cost more in this simulator;
@@ -159,3 +159,14 @@ Reading: (1) the hypothesis is CONFIRMED - with a restoring anchor the mechanica
 large, permanent, linear impact was an artefact of the opposite-best placement rule. (2) Neither variant reproduces square-root impact:
 with feedback the impact is simply linear in phi*Q. Concavity would need extra structure (e.g. heterogeneous latent liquidity as in
 Toth et al. 2011), which this zero-intelligence + Hawkes model does not have. The README makes no square-root claim. Not fixed; understood.
+
+## Post-review fixes (code review before publishing)
+- **gamma calibration bug (changed a published number):** the observer that records mid(t0) was registered after the schedule agent, so
+  it read the mid after the first child order had traded and missed that order's permanent impact. Fixed by registering the observer
+  first. gamma 0.0888 -> 0.1033 ticks/lot (+16%); this only moves the AC *model* predictions (E per lot: TWAP 4.95 -> 5.37, kT=1 4.97 -> 5.38,
+  kT=3 5.48 -> 5.87). The simulated implementation shortfalls and variance ratio are unchanged (they do not use gamma).
+- Implementation shortfall per lot is now divided by the lots actually filled, not by X (no effect on published runs: unfilled = 0).
+- Input validation added: impact experiment (R, Qs, profile_points >= 11 - it indexes sample 10), execution/BL/AS paths and steps,
+  `ac_evaluate` vector size, unregistered agent owner ids, `SimConfig` is validated before the book is allocated.
+- roughvol: `price_greeks` now forces the conditional estimator as documented; `CsvWriter` throws if a write fails.
+- Not changed: `QuoteProbeAgent` can quote through its own side when delta ~ 0 (default delta is not near 0, so published runs are unaffected).

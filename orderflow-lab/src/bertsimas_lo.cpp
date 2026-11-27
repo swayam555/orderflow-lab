@@ -58,6 +58,7 @@ double bl_twap_expected_cost(const BlParams& p) {
 }
 
 BlMcResult bl_monte_carlo(const BlParams& p, std::int64_t paths, std::uint64_t seed, unsigned threads) {
+    if (paths < 1) throw std::invalid_argument("bl_monte_carlo: paths must be >= 1");
     const BlSolution sol = bertsimas_lo_solve(p);
     constexpr std::int64_t kBlock = 1024;
     const std::int64_t nblocks = (paths + kBlock - 1) / kBlock;
