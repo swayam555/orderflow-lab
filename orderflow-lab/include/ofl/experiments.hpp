@@ -64,4 +64,28 @@ struct ExecStrategyResult {
                                                                        const std::vector<ExecStrategy>& strategies,
                                                                        std::int64_t R, std::uint64_t seed, unsigned threads);
 
+// ---------------------------------------------------------------- Avellaneda-Stoikov in the simulator (DESIGN 7.2)
+struct AsCalibration {
+    double sigma2 = 0;  // ticks^2 / s
+    double A = 0, k = 0;  // fill intensity lambda(delta) = A exp(-k delta), 1/s and 1/tick
+    double gamma = 0;   // 0.4 / (sigma2 * T)
+    double lambda_by_delta[6] = {};  // fills per second per side at delta = 1..6 ticks
+    double se_k = 0;
+};
+// Estimates sigma^2 (seed), and A, k from quote probes (100 paths per delta in 1..6). Throws std::runtime_error if some
+// delta has no fills or the fitted k <= 0.
+[[nodiscard]] AsCalibration calibrate_as_params(const SimConfig& cfg, std::uint64_t seed, unsigned threads);
+struct AsSimStats {
+    qc::RunningStats pnl, q_final, abs_q, fills;
+};
+struct AsSimResult {
+    AsSimStats as, symmetric;
+    qc::RunningStats pnl_diff;  // symmetric - AS on the same path
+};
+// Runs the AS and symmetric agents on paths 0..R-1 (same stream per path for both: common random numbers).
+[[nodiscard]] AsSimResult run_as_sim_experiment(const SimConfig& cfg, const AsCalibration& cal, std::int64_t R,
+                                                std::uint64_t seed, unsigned threads);
+// sigma^2 (ticks^2/s) from the pooled variance of 10-s mid changes on [600,1200] over agent-free paths.
+[[nodiscard]] double estimate_sigma2(const SimConfig& cfg, std::uint64_t seed, int n_paths, unsigned threads);
+
 }  // namespace ofl

@@ -5,6 +5,7 @@
 
 #include <qc/stats.hpp>
 
+#include "ofl/avellaneda_stoikov.hpp"
 #include "ofl/bertsimas_lo.hpp"
 #include "ofl/market_sim.hpp"
 
@@ -39,4 +40,14 @@ TEST_CASE("det 2a: Bertsimas-Lo Monte Carlo is thread-count independent") {
     CHECK(same(r1.twap, r8.twap));
     CHECK(same(r1.diff, r8.diff));
     CHECK(same(r1.opt, r3.opt));
+}
+
+TEST_CASE("det 2b: Avellaneda-Stoikov own-model MC is thread-count independent") {
+    const AsModelParams p;
+    const auto r1 = as_own_model(p, 5000, 8001, 1);
+    const auto r8 = as_own_model(p, 5000, 8001, 8);
+    CHECK(same(r1.inventory.pnl, r8.inventory.pnl));
+    CHECK(same(r1.inventory.q_final, r8.inventory.q_final));
+    CHECK(same(r1.symmetric.pnl, r8.symmetric.pnl));
+    CHECK(same(r1.pnl_diff, r8.pnl_diff));
 }

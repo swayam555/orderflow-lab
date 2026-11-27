@@ -68,3 +68,26 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
   AC kT=3 also has *lower* mean IS than TWAP here (-0.346 +- 0.079, 4.4 SE), i.e. front-loading did not cost more in this simulator;
   that is a measured fact about this model (front loading takes liquidity when the book is freshly replenished), not a claim of general validity.
 - BL own model (2e5 paths, seed 3001) in bl_model.csv: see A6 numbers.
+
+## A8 - Avellaneda-Stoikov
+- Own model (paper parameters, 10000 paths, seed 8001, gamma = 0.1). Paper values are RECALLED from memory (flagged), measured values ours:
+
+  | quantity | recalled paper | measured | deviation |
+  |---|---|---|---|
+  | inventory profit | 62.94 | 64.89 | +3.1% |
+  | inventory profit sd | 5.89 | 6.49 | +10.1% |
+  | inventory final-q sd | 2.80 | 2.92 | +4.2% |
+  | symmetric profit | 67.21 | 68.07 | +1.3% |
+  | symmetric profit sd | 13.43 | 13.42 | -0.05% |
+  | symmetric final-q sd | 8.66 | 8.41 | -2.8% |
+
+  No deviation > 15%. Hard checks: Var ratio sym/inv = 4.28 (> 1.5), sd(q_T) ratio inv/sym = 0.347 (< 0.6), paired PnL diff sym - inv =
+  +3.18 +- 0.12 (> 4 SE). sd(q_T) of the inventory strategy: 5.19 (gamma 0.01), 2.92 (0.1), 1.93 (0.5). Mean spreads 1.349 / 1.492 / 2.156.
+- In simulator (calibration seed 8002): sigma^2 0.4028 ticks^2/s, A = 0.1837 /s, k = 0.7129 /tick (se 0.0226), gamma = 0.001655;
+  lambda(delta=1..6) = 0.0889, 0.0442, 0.0214, 0.0119, 0.0045, 0.0027 per side per second.
+  Evaluation (R = 1000, seed 8003, CRN): AS PnL 62.60 (sd 31.83), sd(q_T) 4.03, mean|q| 1.64, fills 64.6;
+  symmetric PnL 78.01 (sd 60.20), sd(q_T) 8.06, mean|q| 4.24, fills 54.3; paired PnL diff (sym - AS) +15.41 +- 1.99.
+  sd(q_T) ratio AS/symmetric = 0.50 (< 0.8, test 9.7 passes). Mean PnL is HIGHER for the symmetric agent in the simulator (the
+  inventory skew costs about 15 ticks*lots of mean PnL for half the inventory risk); this is a measured result, not what the
+  paper's own-model table suggests in magnitude.
+- AsAgent is also exposed with QuoteProbeAgent for calibration. test_determinism now includes the AS own-model check (10.2).

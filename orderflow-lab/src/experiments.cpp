@@ -66,25 +66,26 @@ ExecPathResult run_exec_path(const SimConfig& cfg, const ExecConfig& ec, const s
     return {ag.implementation_shortfall() / static_cast<double>(ec.X), ag.filled(), ag.unfilled()};
 }
 
+double estimate_sigma2(const SimConfig& cfg, std::uint64_t seed, int n_paths, unsigned threads) {
+    std::vector<std::vector<double>> mids(static_cast<std::size_t>(n_paths));
+    qc::parallel_blocks(n_paths, threads, [&](std::int64_t p) {
+        MarketSim sim(cfg, seed, static_cast<std::uint64_t>(p));
+        ObserverAgent ob(600.0, 10.0, 61);
+        sim.add_agent(&ob);
+        sim.run_until(1200.0);
+        mids[static_cast<std::size_t>(p)] = ob.mids();
+    });
+    qc::RunningStats d;
+    for (const auto& m : mids)
+        for (std::size_t k = 1; k < m.size(); ++k) d.add(m[k] - m[k - 1]);
+    return d.variance() / 10.0;
+}
+
 AcCalibration calibrate_ac_params(const SimConfig& cfg, const ExecConfig& ec, std::uint64_t seed, int n_sigma_paths,
                                   int n_probe_paths, int n_gamma_paths, unsigned threads) {
     AcCalibration cal;
     const double tau = ec.H / ec.N;
-    // sigma^2: agent-free paths, mid sampled every 10 s on [600,1200]
-    {
-        std::vector<std::vector<double>> mids(static_cast<std::size_t>(n_sigma_paths));
-        qc::parallel_blocks(n_sigma_paths, threads, [&](std::int64_t p) {
-            MarketSim sim(cfg, seed, static_cast<std::uint64_t>(p));
-            ObserverAgent ob(600.0, 10.0, 61);
-            sim.add_agent(&ob);
-            sim.run_until(1200.0);
-            mids[static_cast<std::size_t>(p)] = ob.mids();
-        });
-        qc::RunningStats d;
-        for (const auto& m : mids)
-            for (std::size_t k = 1; k < m.size(); ++k) d.add(m[k] - m[k - 1]);
-        cal.sigma2 = d.variance() / 10.0;
-    }
+    cal.sigma2 = estimate_sigma2(cfg, seed, n_sigma_paths, threads);
     // epsilon, eta: probe orders
     {
         std::vector<std::vector<ProbeAgent::Obs>> obs(static_cast<std::size_t>(n_probe_paths));
@@ -167,6 +168,82 @@ std::vector<ExecStrategyResult> run_execution_experiment(const SimConfig& cfg, c
             out[s].diff.add(r.is_per_lot - res[static_cast<std::size_t>(p) * S].is_per_lot);
             out[s].unfilled_total += r.unfilled;
         }
+    return out;
+}
+
+// ------------------------------------------------------------------ Avellaneda-Stoikov in the simulator
+
+AsCalibration calibrate_as_params(const SimConfig& cfg, std::uint64_t seed, unsigned threads) {
+    AsCalibration cal;
+    cal.sigma2 = estimate_sigma2(cfg, seed, 400, threads);
+    constexpr int kPaths = 100;
+    std::vector<double> x, y;
+    for (int d = 1; d <= 6; ++d) {
+        std::vector<std::int64_t> fills(kPaths, 0);
+        qc::parallel_blocks(kPaths, threads, [&](std::int64_t p) {
+            MarketSim sim(cfg, seed + 1, static_cast<std::uint64_t>(d * 1000 + p));
+            QuoteProbeAgent pr(static_cast<double>(d), 600.0, 600.0, 1.0);
+            pr.bind(sim);
+            sim.run_until(1200.0);
+            fills[static_cast<std::size_t>(p)] = pr.fills();
+        });
+        std::int64_t tot = 0;
+        for (auto f : fills) tot += f;
+        const double lam = static_cast<double>(tot) / (static_cast<double>(kPaths) * 2.0 * 600.0);
+        cal.lambda_by_delta[d - 1] = lam;
+        if (!(lam > 0.0)) throw std::runtime_error("calibrate_as_params: no fills at delta = " + std::to_string(d));
+        x.push_back(d);
+        y.push_back(std::log(lam));
+    }
+    const qc::OlsResult r = qc::ols(x, y);
+    cal.A = std::exp(r.intercept);
+    cal.k = -r.slope;
+    cal.se_k = r.se_slope;
+    if (!(cal.k > 0.0)) {
+        std::ostringstream os;
+        os << "calibrate_as_params: fitted k = " << cal.k << " <= 0 (A = " << cal.A << ")";
+        throw std::runtime_error(os.str());
+    }
+    cal.gamma = 0.4 / (cal.sigma2 * 600.0);
+    return cal;
+}
+
+AsSimResult run_as_sim_experiment(const SimConfig& cfg, const AsCalibration& cal, std::int64_t R, std::uint64_t seed,
+                                  unsigned threads) {
+    struct One {
+        double pnl[2], q[2], absq[2], fills[2];
+    };
+    std::vector<One> res(static_cast<std::size_t>(R));
+    qc::parallel_blocks(R, threads, [&](std::int64_t p) {
+        for (int sym = 0; sym < 2; ++sym) {
+            AsAgentConfig ac;
+            ac.gamma = cal.gamma;
+            ac.sigma2 = cal.sigma2;
+            ac.k = cal.k;
+            ac.symmetric = sym == 1;
+            MarketSim sim(cfg, seed, static_cast<std::uint64_t>(p));
+            AsAgent ag(ac);
+            ag.bind(sim);
+            sim.run_until(1200.0);
+            One& o = res[static_cast<std::size_t>(p)];
+            o.pnl[sym] = ag.pnl(sim.mid());
+            o.q[sym] = static_cast<double>(ag.inventory());
+            o.absq[sym] = ag.mean_abs_inventory();
+            o.fills[sym] = static_cast<double>(ag.n_fills());
+        }
+    });
+    AsSimResult out;
+    for (const One& o : res) {
+        out.as.pnl.add(o.pnl[0]);
+        out.as.q_final.add(o.q[0]);
+        out.as.abs_q.add(o.absq[0]);
+        out.as.fills.add(o.fills[0]);
+        out.symmetric.pnl.add(o.pnl[1]);
+        out.symmetric.q_final.add(o.q[1]);
+        out.symmetric.abs_q.add(o.absq[1]);
+        out.symmetric.fills.add(o.fills[1]);
+        out.pnl_diff.add(o.pnl[1] - o.pnl[0]);
+    }
     return out;
 }
 

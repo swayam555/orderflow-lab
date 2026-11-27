@@ -113,4 +113,19 @@ TEST_CASE("exp 6 (slow): execution experiment, R = 2000") {
     CHECK(res[3].diff.variance() == 0.0);
 }
 
+TEST_CASE("exp 7 (slow): Avellaneda-Stoikov in the simulator, R = 1000") {
+    const SimConfig cfg;
+    const unsigned th = qc::default_threads();
+    const AsCalibration cal = calibrate_as_params(cfg, 8002, th);
+    MESSAGE("calibration: sigma2 " << cal.sigma2 << " A " << cal.A << " k " << cal.k << " gamma " << cal.gamma);
+    const AsSimResult r = run_as_sim_experiment(cfg, cal, 1000, 8003, th);
+    MESSAGE("AS: PnL " << r.as.pnl.mean() << " sd " << r.as.pnl.stddev() << " q_T sd " << r.as.q_final.stddev() << " mean|q| "
+                       << r.as.abs_q.mean() << " fills " << r.as.fills.mean());
+    MESSAGE("SYM: PnL " << r.symmetric.pnl.mean() << " sd " << r.symmetric.pnl.stddev() << " q_T sd " << r.symmetric.q_final.stddev()
+                        << " mean|q| " << r.symmetric.abs_q.mean() << " fills " << r.symmetric.fills.mean());
+    const double ratio = r.as.q_final.stddev() / r.symmetric.q_final.stddev();
+    MESSAGE("sd(q_T) ratio AS/symmetric = " << ratio);
+    CHECK(ratio < 0.8);
+}
+
 #endif
