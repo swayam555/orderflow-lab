@@ -36,7 +36,7 @@ void print_result(const ImpactResult& r) {
 
 int main(int argc, char** argv) {
     try {
-        qc::Args args(argc, argv, {"paths", "seed", "sweep", "out"});
+        qc::Args args(argc, argv, {"paths", "seed", "sweep", "out", "anchor", "fund_sigma", "fund_feedback"});
         const auto R = args.get_int("paths", 2000);
         const auto seed = args.get_u64("seed", 9001);
         const std::string out = args.get_str("out", OFL_RESULTS_DIR);
@@ -45,7 +45,11 @@ int main(int argc, char** argv) {
         ic.R = R;
         std::printf("Impact experiment: %lld paths per Q, seed %llu, Q in {0,8,16,32,64,128}, agent_market_orders_excite = true\n",
                     static_cast<long long>(R), static_cast<unsigned long long>(seed));
-        const SimConfig cfg;
+        SimConfig cfg;
+        cfg.fundamental_anchor = args.get_int("anchor", 0) != 0;
+        cfg.fund_sigma = args.get_double("fund_sigma", cfg.fund_sigma);
+        cfg.fund_feedback = args.get_double("fund_feedback", 0.0);
+        std::printf("placement: %s, fund_sigma %.3f, fund_feedback %.3f\n", cfg.fundamental_anchor ? "fundamental anchor" : "opposite best (original)", cfg.fund_sigma, cfg.fund_feedback);
         const ImpactResult r = run_impact_experiment(cfg, ic, seed, th);
         write_impact_csvs(r, out);
         print_result(r);

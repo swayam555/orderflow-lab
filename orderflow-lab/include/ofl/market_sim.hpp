@@ -31,6 +31,13 @@ struct SimConfig {
     int init_levels = 20, init_orders_per_level = 3;
     Qty init_order_size = 3;
     bool agent_market_orders_excite = true;  // agent MB/MS are injected into the Hawkes state as type 2/3 events
+    // Optional placement rule (default off = limit orders are priced off the opposite best, as in the original model).
+    // On: background limit orders are priced off a latent efficient price m_t (a Brownian motion with sd fund_sigma ticks/sqrt(s),
+    // independent of the book) so a displaced touch is pulled back by fresh orders. fund_feedback adds a permanent shift of
+    // m_t by fund_feedback ticks per lot of signed agent market-order volume (information content of the metaorder).
+    bool fundamental_anchor = false;
+    double fund_sigma = 0.65;
+    double fund_feedback = 0.0;
     // Throws std::invalid_argument naming the offending parameter.
     void validate() const;
 };
@@ -89,17 +96,19 @@ class MarketSim {
     void bg_add(OrderId id);
     void bg_remove(OrderId id);
     void background_event(int type);
+    void advance_fund();
 
     SimConfig cfg_;
     OrderBook book_;
     HawkesState hawkes_;
-    qc::RngStream rng_h_exp_, rng_h_acc_, rng_attr_, rng_c_exp_, rng_c_sel_;
+    qc::RngStream rng_h_exp_, rng_h_acc_, rng_attr_, rng_c_exp_, rng_c_sel_, rng_f_;
     std::vector<Agent*> agents_;
     std::vector<OrderId> bg_live_;
     std::vector<std::uint32_t> bg_pos_;
     double t_ = 0.0;
     double mid_;
     Tick last_bid_, last_ask_;
+    double fund_ = 0.0, t_fund_ = 0.0;
     Counters counters_;
     std::function<void(const Fill&, double)> observer_;
 };

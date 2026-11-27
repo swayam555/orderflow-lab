@@ -98,3 +98,8 @@ The inventory strategy cuts the profit variance by 4.3x and the final-inventory 
 ## Tests
 
 Release: 20/20 ctest tests pass (includes the `slow` label); ubsan: 17/17 (unit + stat); tsan: 6/6 parallel-labelled tests with no reports. The one documented expected failure is the impact concavity check (`exp 5b`, `doctest::should_fail`). See `NOTES.md` for deviations and open items.
+
+### Impact: what was learned
+The default model's impact is linear and permanent (exponent 0.997). A follow-up diagnostic (see NOTES.md, "A9 follow-up") showed this comes
+from pricing background limit orders off the opposite best; an opt-in anchored rule (`fundamental_anchor`) removes it but still gives no
+square-root law. This project therefore does **not** reproduce square-root impact.

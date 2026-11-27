@@ -53,9 +53,11 @@ MarketSim::MarketSim(const SimConfig& cfg, std::uint64_t seed, std::uint64_t pat
       rng_attr_(seed, path_id, 3),
       rng_c_exp_(seed, path_id, 4),
       rng_c_sel_(seed, path_id, 5),
+      rng_f_(seed, path_id, 6),
       mid_(0.5 * (static_cast<double>(cfg.init_best_bid) + static_cast<double>(cfg.init_best_ask))),
       last_bid_(cfg.init_best_bid),
       last_ask_(cfg.init_best_ask) {
+    fund_ = mid_;
     bg_pos_.assign(1u << 12, kNil);
     for (int side = 0; side < 2; ++side)
         for (int l = 0; l < cfg.init_levels; ++l) {
@@ -107,6 +109,12 @@ void MarketSim::after_engine_call() {
     if (b && a) mid_ = 0.5 * (static_cast<double>(*b) + static_cast<double>(*a));
 }
 
+void MarketSim::advance_fund() {
+    const double dt = t_ - t_fund_;
+    if (dt > 0.0) fund_ += cfg_.fund_sigma * std::sqrt(dt) * rng_f_.normal();
+    t_fund_ = t_;
+}
+
 void MarketSim::background_event(int type) {
     ++counters_.hawkes_events[static_cast<std::size_t>(type)];
     const auto size_of = [&]() { return static_cast<Qty>(rng_attr_.uniform_int(cfg_.size_min, cfg_.size_max)); };
@@ -115,7 +123,18 @@ void MarketSim::background_event(int type) {
         const Qty sz = size_of();
         const Side side = type == 0 ? Side::Buy : Side::Sell;
         std::int64_t px;
-        if (type == 0) {
+        if (cfg_.fundamental_anchor) {
+            advance_fund();
+            if (type == 0) {
+                std::int64_t p = static_cast<std::int64_t>(std::floor(fund_)) - k;
+                if (book_.best_ask()) p = std::min<std::int64_t>(p, static_cast<std::int64_t>(*book_.best_ask()) - 1);
+                px = std::max<std::int64_t>(p, cfg_.min_tick);
+            } else {
+                std::int64_t p = static_cast<std::int64_t>(std::ceil(fund_)) + k;
+                if (book_.best_bid()) p = std::max<std::int64_t>(p, static_cast<std::int64_t>(*book_.best_bid()) + 1);
+                px = std::min<std::int64_t>(p, cfg_.max_tick);
+            }
+        } else if (type == 0) {
             const Tick ref = book_.best_ask() ? *book_.best_ask() : last_ask_;
             px = std::max<std::int64_t>(static_cast<std::int64_t>(ref) - k, cfg_.min_tick);
         } else {
@@ -189,6 +208,10 @@ OrderResult MarketSim::agent_market(OwnerId owner, Side side, Qty qty) {
     ++counters_.agent_orders;
     const OrderResult r = book_.submit_market(side, qty, owner);
     after_engine_call();
+    if (cfg_.fundamental_anchor && cfg_.fund_feedback != 0.0) {
+        advance_fund();
+        fund_ += (side == Side::Buy ? 1.0 : -1.0) * cfg_.fund_feedback * static_cast<double>(r.filled);
+    }
     if (cfg_.agent_market_orders_excite && r.status != Status::Rejected) hawkes_.add_event(side == Side::Buy ? 2 : 3);
     return r;
 }

@@ -140,3 +140,22 @@ the fit rule were not touched. The architect decides whether to redesign the pla
   extended in A8/A9; calibration helper `estimate_sigma2`; batch64 latency row; `parallel` label added to market_sim, bertsimas_lo,
   as_model, experiments tests so tsan covers them; TESTPLAN 9.5 split into 5a (passes) and 5b (should_fail, impact is linear).
 - Open discrepancy: impact exponent 0.997 +- 0.013, not square-root-like (see A9).
+
+## A9 follow-up - diagnosing the linear impact (post-merge)
+Hypothesis from A9 (placement priced off the opposite best re-anchors the book, so displacement is never restored) was tested by adding an
+opt-in placement rule (`SimConfig::fundamental_anchor`, default OFF so every pinned test is unchanged): background limit orders are priced
+off a latent efficient price m_t (Brownian, sd 0.65 ticks/sqrt(s), independent of the book), clamped so they never cross. Optional
+`fund_feedback` phi shifts m_t by phi ticks per lot of signed agent market-order volume. Pre-declared runs: phi in {0, 0.02, 0.05}, R = 1000,
+seed 9001, other parameters as default (no other tuning). I in ticks (SE ~ 0.22-0.28):
+
+| placement | Q=8 | 16 | 32 | 64 | 128 | fit |
+|---|---|---|---|---|---|---|
+| original (opposite best) | 1.92 | 3.76 | 7.98 | 15.48 | 30.00 | delta 0.997 +- 0.013 |
+| anchored, phi = 0 | 0.25 | 0.34 | 0.46 | 1.35 | 2.08 | insufficient (2 points > 4 SE) |
+| anchored, phi = 0.02 | 0.41 | 0.61 | 1.23 | 2.33 | 3.86 | insufficient (3 points > 4 SE) |
+| anchored, phi = 0.05 | 0.55 | 1.20 | 2.01 | 3.84 | 7.62 | delta 0.895 +- 0.039 |
+
+Reading: (1) the hypothesis is CONFIRMED - with a restoring anchor the mechanical impact collapses (I(128) 30 -> 2 ticks), so the original model's
+large, permanent, linear impact was an artefact of the opposite-best placement rule. (2) Neither variant reproduces square-root impact:
+with feedback the impact is simply linear in phi*Q. Concavity would need extra structure (e.g. heterogeneous latent liquidity as in
+Toth et al. 2011), which this zero-intelligence + Hawkes model does not have. The README makes no square-root claim. Not fixed; understood.
