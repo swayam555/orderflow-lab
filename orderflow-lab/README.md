@@ -8,6 +8,15 @@ statistics, parallel loop) and the vendored doctest header are used; no other th
 Every number below comes from a CSV or log produced by the apps / tests in this repository (`results/`, git-ignored), with the
 seeds stated. Where a hypothesis failed, it is reported as failed.
 
+## Toolchain (verified path)
+No system compiler is needed. The build uses `zig c++` (clang) plus CMake and Ninja from PyPI, installed into a local venv:
+```
+uv venv .toolchain/.venv
+uv pip install --python .toolchain/.venv/bin/python ziglang cmake ninja
+./build.sh release --test        # QC_JOBS=4 ./build.sh ... on machines with little RAM
+```
+Other compilers and platforms are untested. `PLAN.md` and `RESEARCH.md` describe the shared build conventions and the literature survey; the library `common/` (`qc`) is shared with a sibling project.
+
 ## What is modelled, and what is not
 
 Modelled: one instrument; price-time priority; GTC limit, IOC limit, market, cancel, modify (reduce in place keeps priority, anything
