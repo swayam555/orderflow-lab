@@ -28,3 +28,16 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
   nonzero mu within 1.5%, nonzero alpha within 2%, zero alpha all < 0.006.
 - test_hawkes_em.cpp holds tests 1-6; test 7 is the label-slow executable test_hawkes_em_slow.
 - ofl_hawkes_fit CSV: rel_err = |fitted-true|/|true| (no true parameter is zero in the 2-D model).
+
+## A5 - MarketSim
+- Event loop exactly per DESIGN 5.3 (tie order agent > cancel > Hawkes; RNG purposes 1..5). Additions beyond the spec API (all additive):
+  `Counters::{bg_crossing_attempts, bg_live_integral}`, `bg_live_count()`, `set_fill_observer()` (used by tests, determinism check).
+  Agent `on_fill` must not call back into the sim (the fill buffer is being iterated); documented.
+- Stat test (seed 1003, 40 paths x 3000 s, window [600,3000]): rates 1.001, 0.9997, 0.2486, 0.2521 (targets 1,1,.25,.25);
+  cancels 144622 vs nu*integral 145108 (z = -1.28); live background orders per side 75.4 / 75.8; mean spread 2.56 ticks;
+  fraction of 1-s samples with both sides non-empty 1.0 (all); Var(10 s mid change) 4.14 vs 4.37 (two disjoint path sets, 5% apart).
+- ofl_depth (200 paths, seed 9100, samples every 10 s on [600,1200]): mean spread 2.58 ticks, 151.2 live background orders
+  (both sides); depth at the touch 4.54 (bid) / 4.56 (ask) lots; depth summed over the first 40 levels from each side's best, averaged
+  over sides: 188 lots. Distance in depth_profile.csv is measured from each side's own best quote. Mid-change variance 4.2 ticks^2/10 s
+  (sigma^2 ~ 0.42 ticks^2/s). Per-lot market impact of one lot at the touch is therefore small relative to depth: Q = 128 lots
+  over 300 s consumes ~ the depth of the first ~25 levels of one side, replenishment aside - relevant for A9.
