@@ -129,3 +129,14 @@ the depth profile does grow away from the touch (mean depth 4.5 lots at the touc
 Test handling (per TESTPLAN 9.5): `exp 5a` (monotone steps, delta >= 0.25) passes; the failing checks (delta <= 0.85, delta + 2 SE < 1) live in
 `exp 5b`, marked `doctest::should_fail()` so the suite is green while the discrepancy exists and turns red if the model ever changes. Q grid, H, R, seeds and
 the fit rule were not touched. The architect decides whether to redesign the placement rule.
+
+## A10 - Final runs
+- All apps run with defaults and write their CSVs (hawkes_fit, depth_profile, impact*, ac_params, execution, bl_model, as_model, as_params,
+  as_sim, bench_engine, bench_latency). Test results: release 20/20 (with slow), ubsan 17/17, tsan 6/6 (no reports).
+- Final benchmark (load average ~3.5 from the other agent's builds, not idle): median 8.659 Mops/s = 115.5 ns/op (8.48-8.75).
+  Per-op timed latency is timer-floor limited (timer pair = 1396 ns); added a 64-op batch estimate: p50 127, p99 261, p99.9 410 ns/op.
+- Deviations / additions vs the docs (all recorded above): conservation identity counts maker fills too (A2); `em_step` and
+  `default_em_init` exposed (A4); extra Counters/observer in MarketSim (A5); test_determinism created in A7 (10.3, 10.2 BL) and
+  extended in A8/A9; calibration helper `estimate_sigma2`; batch64 latency row; `parallel` label added to market_sim, bertsimas_lo,
+  as_model, experiments tests so tsan covers them; TESTPLAN 9.5 split into 5a (passes) and 5b (should_fail, impact is linear).
+- Open discrepancy: impact exponent 0.997 +- 0.013, not square-root-like (see A9).
