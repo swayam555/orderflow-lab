@@ -41,3 +41,14 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
   over sides: 188 lots. Distance in depth_profile.csv is measured from each side's own best quote. Mid-change variance 4.2 ticks^2/10 s
   (sigma^2 ~ 0.42 ticks^2/s). Per-lot market impact of one lot at the touch is therefore small relative to depth: Q = 128 lots
   over 300 s consumes ~ the depth of the first ~25 levels of one side, replenishment aside - relevant for A9.
+
+## A6 - Almgren-Chriss and Bertsimas-Lo (pure math)
+- All TESTPLAN 6 and 7 tests pass on the first run with the DESIGN recursions; the BL recursion (a,b,c,d) was re-derived by hand
+  from the Bellman equation (minimising over S gives S* = W - (theta W - rho b X)/(2a); substituting back reproduces the stated
+  a_t, b_t, c_t, d_t) and verified by Gauss-Hermite Bellman consistency (to 1e-9) and Monte Carlo.
+- BlParams.sigma_eps / sigma_eta are standard deviations (the test passes sqrt(0.001) for sigma_eta^2 = 0.001).
+- Direct-evaluation check in test 6.4: trade k executes at S_{k-1} - eps - (eta/tau) n_k, S_k = S_{k-1} - gamma n_k + sigma sqrt(tau) xi;
+  this reproduces E = gamma X^2/2 + eps sum|n| + (eta - gamma tau/2)/tau sum n^2 exactly.
+- BL MC (2e5 paths, seed 3001, X0 = 0): optimal 5.26162e6 +- 191 vs V1 5.26156e6; TWAP 5.26256e6 +- 191 vs analytic 5.26250e6;
+  paired diff -939.2 +- 13.3 vs -943.3 predicted. X0 = 0.1: paired diff opt - TWAP = -1653.3 +- 20.8.
+- AC MC (2e5 paths, seed 2001): E and Var within 4 SE for all four lambdas (e.g. lambda 2e-6: E 1.1407e6 vs MC 1.1411e6 +- 1.0e3).
