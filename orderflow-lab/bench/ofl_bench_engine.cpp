@@ -257,6 +257,26 @@ int main(int argc, char** argv) {
                 sink = sink + r.filled + r.resting;
             }
         }
+        // Batched latency: time blocks of 64 consecutive ops (timer overhead amortised over the block), report ns per op.
+        std::vector<std::uint32_t> batch;
+        {
+            OrderBook b(kMinTick, kMaxTick, cap, s.ops.size() + 4000);
+            std::size_t i = 0;
+            for (; i < s.n_prefill + warmup; ++i) {
+                const OrderResult r = apply(b, s.ops[i]);
+                sink = sink + r.filled + r.resting;
+            }
+            constexpr std::size_t kB = 64;
+            for (; i + kB <= s.ops.size(); i += kB) {
+                const std::uint64_t t0 = qc::now_ns();
+                for (std::size_t k = 0; k < kB; ++k) {
+                    const OrderResult r = apply(b, s.ops[i + k]);
+                    sink = sink + r.filled + r.resting;
+                }
+                const std::uint64_t t1 = qc::now_ns();
+                batch.push_back(static_cast<std::uint32_t>((t1 - t0) / kB));
+            }
+        }
         std::vector<std::uint64_t> ov(1000000);
         for (auto& o : ov) {
             const std::uint64_t t0 = qc::now_ns();
@@ -275,6 +295,7 @@ int main(int argc, char** argv) {
                         p50, p90, p99, p999, mx, v.size());
         };
         emit("all", lat);
+        emit("batch64_per_op", batch);
         for (int t = 0; t < 4; ++t) {
             std::vector<std::uint32_t> v;
             for (std::size_t k = 0; k < ops; ++k)
