@@ -12,7 +12,7 @@ using namespace ofl;
 using qc::test::close;
 
 namespace {
-HawkesParams model2d() {
+[[maybe_unused]] HawkesParams model2d() {
     HawkesParams p;
     p.dim = 2;
     p.mu = {0.5, 0.3};
@@ -26,7 +26,7 @@ HawkesParams model2d() {
     return p;
 }
 // Default 4-D market-simulator flow (DESIGN 5.1): G rows = affected, cols = source.
-HawkesParams model4d() {
+[[maybe_unused]] HawkesParams model4d() {
     qc::Mat G(4, 4), beta(4, 4);
     G(0, 0) = 0.3;
     G(0, 3) = 0.3;
