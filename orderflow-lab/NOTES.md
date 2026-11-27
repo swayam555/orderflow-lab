@@ -91,3 +91,41 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
   inventory skew costs about 15 ticks*lots of mean PnL for half the inventory risk); this is a measured result, not what the
   paper's own-model table suggests in magnitude.
 - AsAgent is also exposed with QuoteProbeAgent for calibration. test_determinism now includes the AS own-model check (10.2).
+
+## A9 - Impact experiment  (OPEN DISCREPANCY: TESTPLAN 9.5 concavity fails)
+Default run (R = 2000 per Q, seed 9001, H = 300 s, agent_market_orders_excite = true), I in ticks, SE from paired differences:
+
+| Q | I | SE |
+|---|---|---|
+| 8 | 1.919 | 0.184 |
+| 16 | 3.764 | 0.189 |
+| 32 | 7.980 | 0.191 |
+| 64 | 15.480 | 0.217 |
+| 128 | 29.997 | 0.257 |
+
+sigma_H = 6.622 ticks, V_H = 375.0 lots, fit over 5 points: **delta = 0.9973 +- 0.0131, R^2 = 0.9995, Y = 4.45**.
+I(Q) is strictly increasing (each step > 2 SE, steps 7-56 SE) and delta >= 0.25 holds, but delta <= 0.85 and delta + 2 SE < 1 FAIL:
+the simulator's impact is linear (about 0.23 ticks per lot), not square-root-like. Impact is also almost fully permanent: the
+profile for Q = 64 rises to 15.48 at t0 + H and is 14.85 +- 0.27 at t0 + 2H (about 4% decay).
+Per WORKPLAN the documented sweep was run once (nu in {0.005, 0.01, 0.02} x K in {10, 20, 40}, R = 1000, seed 9001; no other tuning):
+
+| nu | K | delta | SE | R^2 |
+|---|---|---|---|---|
+| 0.005 | 10 | 1.004 | 0.035 | 0.996 |
+| 0.005 | 20 | 0.921 | 0.013 | 0.999 |
+| 0.005 | 40 | 0.981 | 0.036 | 0.996 |
+| 0.010 | 10 | 1.092 | 0.041 | 0.996 |
+| 0.010 | 20 | 0.964 | 0.024 | 0.998 |
+| 0.010 | 40 | 1.048 | 0.040 | 0.996 |
+| 0.020 | 10 | 1.166 | 0.020 | 0.999 |
+| 0.020 | 20 | 1.033 | 0.014 | 0.999 |
+| 0.020 | 40 | 1.002 | 0.024 | 0.998 |
+
+No configuration is concave (delta between 0.92 and 1.17). The hypothesis in DESIGN 8 (zero-intelligence + Hawkes gives delta ~ 0.5) is
+therefore REJECTED for this model; the README must say "linear/permanent", not "square-root-like".
+Untested explanation (hypothesis only, nothing was changed): background limit orders are priced relative to the opposite best quote
+(ref_ask - k, ref_bid + k), so the whole book re-anchors to the new touch and the shifted price is never pulled back; there is
+no latent-liquidity depth profile growing away from the touch (mean depth: ~4.5 lots at the touch, roughly flat beyond).
+Test handling (per TESTPLAN 9.5): `exp 5a` (monotone steps, delta >= 0.25) passes; the failing checks (delta <= 0.85, delta + 2 SE < 1) live in
+`exp 5b`, marked `doctest::should_fail()` so the suite is green while the discrepancy exists and turns red if the model ever changes. Q grid, H, R, seeds and
+the fit rule were not touched. The architect decides whether to redesign the placement rule.

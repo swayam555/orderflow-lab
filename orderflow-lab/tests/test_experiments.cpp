@@ -1,6 +1,8 @@
 #include <qc/test.hpp>
 
 #include <cmath>
+#include <fstream>
+#include <string>
 #include <vector>
 
 #include <qc/parallel.hpp>
@@ -91,7 +93,59 @@ TEST_CASE("exp 4: ScheduleAgent fills everything; IS equals independent recomput
     }
 }
 
+TEST_CASE("exp 3: impact experiment plumbing (R = 8)") {
+    ImpactConfig ic;
+    ic.R = 8;
+    const ImpactResult r = run_impact_experiment(SimConfig{}, ic, 9001, qc::default_threads());
+    REQUIRE(r.points.size() == 6);
+    CHECK(r.points[0].Q == 0);
+    CHECK(r.points[0].I == 0.0);
+    CHECK(r.points[0].se == 0.0);
+    CHECK(r.points[0].n == 8);
+    CHECK(r.profile.size() == 6 * 21);
+    const std::string dir = "ofl_test_impact_csv";
+    write_impact_csvs(r, dir);
+    auto first_line = [&](const std::string& f) {
+        std::ifstream in(dir + "/" + f);
+        std::string l;
+        std::getline(in, l);
+        return l;
+    };
+    CHECK(first_line("impact.csv") == "Q,I,se,n");
+    CHECK(first_line("impact_profile.csv") == "Q,j,time,mean,se");
+    CHECK(first_line("impact_fit.csv") == "delta,se_delta,r2,Y,n_points");
+}
+
 #else
+
+namespace {
+const ImpactResult& default_impact() {
+    static const ImpactResult r = run_impact_experiment(SimConfig{}, ImpactConfig{}, 9001, qc::default_threads());
+    return r;
+}
+}  // namespace
+
+TEST_CASE("exp 5a (slow): impact is strictly increasing in Q and fitted delta >= 0.25") {
+    const ImpactResult& r = default_impact();
+    for (const auto& p : r.points)
+        MESSAGE("Q " << p.Q << " I " << p.I << " se " << p.se << " step " << p.step_diff << " step_se " << p.step_se);
+    MESSAGE("sigma_H " << r.sigma_H << " V_H " << r.V_H);
+    MESSAGE("fit ok " << r.fit.ok << " delta " << r.fit.delta << " se " << r.fit.se_delta << " r2 " << r.fit.r2 << " Y " << r.fit.Y
+                      << " n " << r.fit.n_points);
+    for (std::size_t i = 1; i < r.points.size(); ++i) CHECK(r.points[i].step_diff > 2.0 * r.points[i].step_se);
+    REQUIRE(r.fit.ok);
+    CHECK(r.fit.delta >= 0.25);
+}
+
+// EXPECTED FAIL (see NOTES.md, "Open discrepancies" / A9): the default simulator produces an essentially LINEAR, permanent
+// impact (delta ~ 0.997 +- 0.013), so the concavity checks below fail. doctest::should_fail() makes this test pass only
+// while it keeps failing; if the model is ever changed so that it concaves, this test will turn red and must be promoted.
+TEST_CASE("exp 5b (slow, EXPECTED FAIL): fitted delta in [0.25,0.85] and concave" * doctest::should_fail()) {
+    const ImpactResult& r = default_impact();
+    REQUIRE(r.fit.ok);
+    CHECK(r.fit.delta <= 0.85);
+    CHECK(r.fit.delta + 2.0 * r.fit.se_delta < 1.0);
+}
 
 TEST_CASE("exp 6 (slow): execution experiment, R = 2000") {
     const SimConfig cfg;

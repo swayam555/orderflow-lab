@@ -1,12 +1,16 @@
 #include <qc/test.hpp>
 
 #include <cmath>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <vector>
 
 #include <qc/stats.hpp>
 
 #include "ofl/avellaneda_stoikov.hpp"
 #include "ofl/bertsimas_lo.hpp"
+#include "ofl/experiments.hpp"
 #include "ofl/market_sim.hpp"
 
 using namespace ofl;
@@ -50,4 +54,28 @@ TEST_CASE("det 2b: Avellaneda-Stoikov own-model MC is thread-count independent")
     CHECK(same(r1.inventory.q_final, r8.inventory.q_final));
     CHECK(same(r1.symmetric.pnl, r8.symmetric.pnl));
     CHECK(same(r1.pnl_diff, r8.pnl_diff));
+}
+
+namespace {
+std::string slurp(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+}  // namespace
+
+TEST_CASE("det 1: impact experiment CSV bytes are thread-count independent") {
+    ImpactConfig ic;
+    ic.R = 16;
+    ic.Qs = {8};
+    std::string ref[3];
+    int idx = 0;
+    for (unsigned th : {1u, 3u, 8u}) {
+        const ImpactResult r = run_impact_experiment(SimConfig{}, ic, 9001, th);
+        const std::string dir = "ofl_test_det_" + std::to_string(th);
+        write_impact_csvs(r, dir);
+        ref[idx++] = slurp(dir + "/impact.csv") + slurp(dir + "/impact_profile.csv") + slurp(dir + "/impact_fit.csv");
+    }
+    CHECK(ref[0].size() > 200);
+    CHECK(ref[0] == ref[1]);
+    CHECK(ref[0] == ref[2]);
 }

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include <qc/csv.hpp>
 #include <qc/parallel.hpp>
 
 #include "ofl/agents.hpp"
@@ -245,6 +246,103 @@ AsSimResult run_as_sim_experiment(const SimConfig& cfg, const AsCalibration& cal
         out.pnl_diff.add(o.pnl[1] - o.pnl[0]);
     }
     return out;
+}
+
+// ------------------------------------------------------------------ impact validation
+
+ImpactResult run_impact_experiment(const SimConfig& cfg, const ImpactConfig& ic, std::uint64_t seed, unsigned threads) {
+    std::vector<int> qs{0};
+    for (int q : ic.Qs) qs.push_back(q);
+    const std::size_t nq = qs.size();
+    const auto np = static_cast<std::size_t>(ic.profile_points);
+    const std::int64_t R = ic.R;
+    std::vector<double> mids(static_cast<std::size_t>(R) * nq * np);
+    std::vector<double> volume(static_cast<std::size_t>(R), 0.0);
+    qc::parallel_blocks(R, threads, [&](std::int64_t p) {
+        for (std::size_t qi = 0; qi < nq; ++qi) {
+            MarketSim sim(cfg, seed, static_cast<std::uint64_t>(p));
+            ObserverAgent ob(ic.t0, ic.H / 10.0, ic.profile_points);
+            sim.add_agent(&ob);
+            std::vector<ScheduledOrder> sched;
+            const int Q = qs[qi];
+            for (int m = 0; m < Q; ++m) sched.push_back({ic.t0 + (m + 0.5) * ic.H / Q, 1});
+            ScheduleAgent meta(Side::Buy, std::move(sched), std::numeric_limits<double>::infinity(),
+                               std::numeric_limits<double>::infinity());
+            if (Q > 0) meta.bind(sim);
+            double vol = 0.0;
+            if (qi == 0)
+                sim.set_fill_observer([&](const Fill& f, double t) {
+                    if (f.taker_owner == kBackground && t >= ic.t0 && t <= ic.t0 + ic.H) vol += static_cast<double>(f.qty);
+                });
+            sim.run_until(ic.t0 + ic.H / 10.0 * (ic.profile_points - 1));
+            if (qi == 0) volume[static_cast<std::size_t>(p)] = vol;
+            const auto& m = ob.mids();
+            for (std::size_t j = 0; j < np; ++j) mids[(static_cast<std::size_t>(p) * nq + qi) * np + j] = m[j];
+        }
+    });
+    auto mid_at = [&](std::int64_t p, std::size_t qi, std::size_t j) { return mids[(static_cast<std::size_t>(p) * nq + qi) * np + j]; };
+    const std::size_t jH = 10;  // t0 + H
+    ImpactResult out;
+    {
+        qc::RunningStats sh, vh;
+        for (std::int64_t p = 0; p < R; ++p) {
+            sh.add(mid_at(p, 0, jH) - mid_at(p, 0, 0));
+            vh.add(volume[static_cast<std::size_t>(p)]);
+        }
+        out.sigma_H = sh.stddev();
+        out.V_H = vh.mean();
+    }
+    for (std::size_t qi = 0; qi < nq; ++qi) {
+        qc::RunningStats imp, step;
+        for (std::int64_t p = 0; p < R; ++p) {
+            const double d = (mid_at(p, qi, jH) - mid_at(p, qi, 0)) - (mid_at(p, 0, jH) - mid_at(p, 0, 0));
+            imp.add(d);
+            if (qi > 0) {
+                const double dprev = (mid_at(p, qi - 1, jH) - mid_at(p, qi - 1, 0)) - (mid_at(p, 0, jH) - mid_at(p, 0, 0));
+                step.add(d - dprev);
+            } else {
+                step.add(0.0);
+            }
+        }
+        out.points.push_back({qs[qi], imp.mean(), imp.se(), imp.n(), step.mean(), step.se()});
+        for (std::size_t j = 0; j < np; ++j) {
+            qc::RunningStats pr;
+            for (std::int64_t p = 0; p < R; ++p)
+                pr.add((mid_at(p, qi, j) - mid_at(p, qi, 0)) - (mid_at(p, 0, j) - mid_at(p, 0, 0)));
+            out.profile.push_back({qs[qi], static_cast<int>(j), ic.t0 + static_cast<double>(j) * ic.H / 10.0, pr.mean(), pr.se()});
+        }
+    }
+    // fit: log I on log Q over points with I > 4 SE
+    std::vector<double> lx, ly;
+    double ysum = 0.0;
+    for (const ImpactPoint& pt : out.points) {
+        if (pt.Q <= 0 || !(pt.I > 4.0 * pt.se)) continue;
+        lx.push_back(std::log(static_cast<double>(pt.Q)));
+        ly.push_back(std::log(pt.I));
+        ysum += pt.I / (out.sigma_H * std::sqrt(static_cast<double>(pt.Q) / out.V_H));
+    }
+    if (lx.size() >= 4) {
+        const qc::OlsResult f = qc::ols(lx, ly);
+        out.fit = {true, f.slope, f.se_slope, f.r2, ysum / static_cast<double>(lx.size()), static_cast<int>(lx.size())};
+    } else {
+        out.fit.n_points = static_cast<int>(lx.size());
+    }
+    return out;
+}
+
+void write_impact_csvs(const ImpactResult& r, const std::string& dir) {
+    {
+        qc::CsvWriter c(dir + "/impact.csv", {"Q", "I", "se", "n"});
+        for (const auto& p : r.points) c.row({std::int64_t{p.Q}, p.I, p.se, p.n});
+    }
+    {
+        qc::CsvWriter c(dir + "/impact_profile.csv", {"Q", "j", "time", "mean", "se"});
+        for (const auto& p : r.profile) c.row({std::int64_t{p.Q}, std::int64_t{p.j}, p.time, p.mean, p.se});
+    }
+    {
+        qc::CsvWriter c(dir + "/impact_fit.csv", {"delta", "se_delta", "r2", "Y", "n_points"});
+        c.row({r.fit.delta, r.fit.se_delta, r.fit.r2, r.fit.Y, std::int64_t{r.fit.n_points}});
+    }
 }
 
 }  // namespace ofl

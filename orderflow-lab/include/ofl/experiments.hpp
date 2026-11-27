@@ -88,4 +88,39 @@ struct AsSimResult {
 // sigma^2 (ticks^2/s) from the pooled variance of 10-s mid changes on [600,1200] over agent-free paths.
 [[nodiscard]] double estimate_sigma2(const SimConfig& cfg, std::uint64_t seed, int n_paths, unsigned threads);
 
+// ---------------------------------------------------------------- impact validation (DESIGN 8)
+struct ImpactConfig {
+    std::vector<int> Qs{8, 16, 32, 64, 128};  // metaorder sizes (lots); a control Q = 0 is always run first
+    double t0 = 600.0, H = 300.0;
+    std::int64_t R = 2000;
+    int profile_points = 21;  // mid sampled at t0 + j*H/10, j = 0..20
+};
+struct ImpactPoint {
+    int Q;
+    double I, se;  // paired impact over [t0, t0+H] (ticks) and its standard error
+    std::int64_t n;
+    double step_diff, step_se;  // I(Q) - I(previous Q) and the SE of that paired difference (0 for Q = 0)
+};
+struct ImpactProfilePoint {
+    int Q, j;
+    double time, mean, se;  // paired mid change since t0 (ticks)
+};
+struct ImpactFit {
+    bool ok = false;  // false = "insufficient" (fewer than 4 points with I > 4 SE)
+    double delta = 0, se_delta = 0, r2 = 0, Y = 0;
+    int n_points = 0;
+};
+struct ImpactResult {
+    std::vector<ImpactPoint> points;           // Q = 0 first
+    std::vector<ImpactProfilePoint> profile;   // for every Q including the control (all zeros)
+    ImpactFit fit;
+    double sigma_H = 0;  // sd of the control mid change over H (ticks)
+    double V_H = 0;      // mean background traded volume in [t0, t0+H] on control paths (lots)
+};
+// Runs control + metaorders on paths 0..R-1 (common random numbers across Q; path p uses stream p).
+[[nodiscard]] ImpactResult run_impact_experiment(const SimConfig& cfg, const ImpactConfig& ic, std::uint64_t seed,
+                                                 unsigned threads);
+// Writes impact.csv (Q,I,se,n), impact_profile.csv (Q,j,time,mean,se) and impact_fit.csv (delta,se_delta,r2,Y,n_points).
+void write_impact_csvs(const ImpactResult& r, const std::string& dir);
+
 }  // namespace ofl
