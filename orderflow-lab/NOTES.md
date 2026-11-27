@@ -52,3 +52,19 @@ Convention: rejected cancel/modify return `id` = the id passed (rejected submits
 - BL MC (2e5 paths, seed 3001, X0 = 0): optimal 5.26162e6 +- 191 vs V1 5.26156e6; TWAP 5.26256e6 +- 191 vs analytic 5.26250e6;
   paired diff -939.2 +- 13.3 vs -943.3 predicted. X0 = 0.1: paired diff opt - TWAP = -1653.3 +- 20.8.
 - AC MC (2e5 paths, seed 2001): E and Var within 4 SE for all four lambdas (e.g. lambda 2e-6: E 1.1407e6 vs MC 1.1411e6 +- 1.0e3).
+
+## A7 - Execution experiment
+- ScheduleAgent / ProbeAgent / calibrate_ac_params / run_execution_experiment / ofl_execution implemented per DESIGN 6.3.
+  (test_determinism.cpp was created here with TESTPLAN 10.3 and 10.2 (BL) - those are due in A5/A6 by the WORKPLAN table; AS and
+  impact determinism are added in A8/A9.)
+- Calibration (seed 7001; 400/200/500 paths): sigma^2 0.4159 ticks^2/s; epsilon 1.1347 +- 0.0314 ticks; eta 5.892 ticks per (lot/s)
+  (OLS slippage slope c x tau); gamma 0.0888 +- 0.0067 ticks/lot. No throw (eta_tilde = 5.89 - 0.089*30/2 = 4.56 > 0).
+  The tiny 10/10/10 calibration of test exp 1 also returns finite values (eps 1.26, eta 5.80, gamma 0.048).
+- Evaluation (R = 2000, seed 7002, CRN; IS per lot in ticks): TWAP 5.458 (sd 4.089, se 0.091); AC kT=1 5.368 (sd 3.904), diff -0.090 +- 0.070;
+  AC kT=3 5.112 (sd 3.166), diff -0.346 +- 0.079; BL gamma=0 identical to TWAP. unfilled_total = 0 for all.
+  AC model prediction (E, sd per lot): TWAP 4.95 / 5.96; kT=1 4.97 / 5.55; kT=3 5.48 / 3.83.
+  Observed: the variance reduction is real (Var ratio kT=3 / TWAP = 0.599 < 0.9) but the model's sd over-predicts and its E slightly
+  under-predicts TWAP and over-predicts kT=3 (AC cost model is a linear approximation; the simulator has mean-reverting spread/depth).
+  AC kT=3 also has *lower* mean IS than TWAP here (-0.346 +- 0.079, 4.4 SE), i.e. front-loading did not cost more in this simulator;
+  that is a measured fact about this model (front loading takes liquidity when the book is freshly replenished), not a claim of general validity.
+- BL own model (2e5 paths, seed 3001) in bl_model.csv: see A6 numbers.
